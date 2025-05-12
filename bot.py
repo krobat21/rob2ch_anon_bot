@@ -2,8 +2,8 @@ import os
 import asyncio
 from aiogram import Bot, Dispatcher, executor, types
 
-API_TOKEN = os.environ['API_TOKEN']
-OWNER_ID = int(os.environ['OWNER_ID'])
+API_TOKEN = os.environ['7481273027:AAERR7vI_rCaywsfD5cU36CCDyHp6k5L1QQ']
+OWNER_ID = int(os.environ['58715694'])
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
