@@ -22,33 +22,37 @@ def get_next_id():
         f.truncate()
     return next_value
 
-# 1. При запуске бота /start - приветствие пользователю
+# Приветствие для пользователя при /start
 @dp.message_handler(commands=['start'])
 async def start_message(message: types.Message):
     await message.reply(
-        "Привет! Наверное ты хочешь что-то написать... НУ ДАВАЙ, СДЕЛАЙ ЭТО! Напиши сообщение и я его получу. "
-        "Но ответить, увы, не смогу. Но может оно и к лучшему?"
+        "Привет! Наверное ты хочешь что-то написать... Напиши сообщение, но учти, ответить, увы, не смогу. Но может оно и к лучшему?"
     )
 
 @dp.message_handler(content_types=types.ContentType.ANY)
 async def anonymous_message(message: types.Message):
     if message.text and message.text.startswith('/start'):
-        return  # Позволяет не дублировать приветствие
+        return  # Не дублируем приветствие
 
     message_id = get_next_id()
     user = message.from_user
     first_name = user.first_name or ""
     last_name = user.last_name or ""
-    user_link = f'<a href="tg://user?id={user.id}">{user.id}</a>'
+    username = f"@{user.username}" if user.username else "Без ника"
+
+    # Получаем номер телефона, если пользователь отправил контакт
+    phone = "Без телефона"
+    if message.contact and message.contact.phone_number:
+        phone = message.contact.phone_number
 
     notification = (
-        f'⚡️Новое анонимное обращение №{message_id} от пользователя "{first_name}" "{last_name}" {user_link}'
+        f'⚡️Новое анонимное обращение №{message_id} от пользователя "{first_name}" "{last_name}" {username}, телефон: {phone}'
     )
     content_header = f"📥 Анонимное сообщение №{message_id}:"
 
-    # Уведомление о поступлении с данными пользователя
-    await bot.send_message(OWNER_ID, notification, parse_mode='HTML')
+    await bot.send_message(OWNER_ID, notification)
 
+    # Обрабатываем разные типы сообщений (текст, фото, документы, видео)
     if message.text:
         await bot.send_message(OWNER_ID, f"{content_header}\n\n{message.text}")
 
