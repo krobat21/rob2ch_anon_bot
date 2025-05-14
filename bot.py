@@ -10,9 +10,9 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
 API_TOKEN = 'ВАШ_ТОКЕН'
-OWNER_ID = ВАШ_АЙДИ  # ЦЕЛОЕ ЧИСЛО
+OWNER_ID = ВАШ_ID  # ЦЕЛОЕ ЧИСЛО
 
-# ==== Flask для Ping (по желанию) ====
+# ==== Flask для Ping ====
 app = Flask('')
 
 @app.route('/')
@@ -33,7 +33,6 @@ dp = Dispatcher(bot, storage=storage)
 counter_file = "counter.txt"
 mapping_file = "messages_map.json"
 
-# {message_id: user_id}
 def load_mapping():
     if os.path.exists(mapping_file):
         with open(mapping_file, "r") as f:
@@ -57,27 +56,22 @@ def get_next_id():
         f.truncate()
     return next_value
 
-# FSM для ответа админа
 class ReplyState(StatesGroup):
     waiting_for_admin = State()
-# FSM для ответа пользователя
 class UserReplyState(StatesGroup):
     waiting_for_user = State()
 
-# /start
 @dp.message_handler(commands=['start'])
 async def start_message(message: types.Message):
     await message.reply(
         "Привет! Напиши сюда анонимное сообщение, и оно дойдет администратору. Ответить можно будет только через специальные кнопки!"
     )
 
-# Получение анонимного сообщения от пользователя
 @dp.message_handler(content_types=types.ContentType.ANY, state="*")
 async def anonymous_message(message: types.Message, state: FSMContext):
     if message.text and message.text.startswith('/start'):
         return
 
-    # Генерируем message_id и маппинг
     message_id = get_next_id()
     user_id = message.from_user.id
 
@@ -98,7 +92,6 @@ async def anonymous_message(message: types.Message, state: FSMContext):
     )
     content_header = f"📥 Анонимное сообщение №{message_id}:"
 
-    # Кнопка "Ответить на сообщение"
     keyboard = InlineKeyboardMarkup().add(
         InlineKeyboardButton("Ответить на сообщение", callback_data=f"reply_{message_id}")
     )
@@ -112,91 +105,84 @@ async def anonymous_message(message: types.Message, state: FSMContext):
     elif message.document:
         await bot.send_document(OWNER_ID, message.document.file_id, caption=content_header + (("\n" + message.caption) if message.caption else ""), reply_markup=keyboard)
     elif message.video:
-await bot.sendvideo(OWNERID, message.video.fileid, caption=contentheader + (("\n" + message.caption) if message.caption else ""), replymarkup=keyboard)
+        await bot.send_video(OWNER_ID, message.video.file_id, caption=content_header + (("\n" + message.caption) if message.caption else ""), reply_markup=keyboard)
     else:
-        await bot.sendmessage(OWNERID, f"{contentheader} (неизвестный формат!)", replymarkup=keyboard)
+await bot.send_message(OWNER_ID, f"{content_header} (неизвестный формат!)", reply_markup=keyboard)
 
     await message.reply("Ваше анонимное обращение отправлено!")
 
-# Обработка кнопки "Ответить" от администратора
-@dp.callbackqueryhandler(lambda c: c.data and c.data.startswith('reply'))
-async def processcallbackreply(callbackquery: types.CallbackQuery, state: FSMContext):
-    if int(callbackquery.fromuser.id) != int(OWNERID):
-        return await callbackquery.answer("Только админ может отвечать!", showalert=True)
-    messageid = callbackquery.data.split('')[1]
-    await state.updatedata(answertoid=messageid)
-    await bot.sendmessage(OWNERID, f"Введите ответ для обращения №{messageid}:")
-    await ReplyState.waitingforadmin.set()
-    await callbackquery.answer()
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('reply_'))
+async def process_callback_reply(callback_query: types.CallbackQuery, state: FSMContext):
+    if int(callback_query.from_user.id) != int(OWNER_ID):
+        return await callback_query.answer("Только админ может отвечать!", show_alert=True)
+    message_id = callback_query.data.split('_')[1]
+    await state.update_data(answer_to_id=message_id)
+    await bot.send_message(OWNER_ID, f"Введите ответ для обращения №{message_id}:")
+    await ReplyState.waiting_for_admin.set()
+    await callback_query.answer()
 
-# Когда админ вводит ответ пользователю
-@dp.messagehandler(state=ReplyState.waitingforadmin, contenttypes=types.ContentType.ANY)
-async def processadminanswer(message: types.Message, state: FSMContext):
-    data = await state.getdata()
-    messageid = data.get('answertoid')
-    mapping = loadmapping()
-    userid = mapping.get(str(messageid))
-    if not userid:
+@dp.message_handler(state=ReplyState.waiting_for_admin, content_types=types.ContentType.ANY)
+async def process_admin_answer(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    message_id = data.get('answer_to_id')
+    mapping = load_mapping()
+    user_id = mapping.get(str(message_id))
+    if not user_id:
         await message.reply("Ошибка: пользователь не найден.")
         await state.finish()
         return
     try:
-        kbcont = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("Продолжить диалог", callbackdata=f"continue{messageid}")
+        kb_cont = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("Продолжить диалог", callback_data=f"continue_{message_id}")
         )
-        await bot.sendmessage(userid, "‼️ Получен ответ на вашу анонимку!")
+        await bot.send_message(user_id, "‼️ Получен ответ на вашу анонимку!")
         if message.text:
-            await bot.sendmessage(userid, message.text, replymarkup=kbcont)
+            await bot.send_message(user_id, message.text, reply_markup=kb_cont)
         elif message.photo:
-            await bot.sendphoto(userid, message.photo[-1].fileid, caption=(message.caption or ""), replymarkup=kbcont)
+            await bot.send_photo(user_id, message.photo[-1].file_id, caption=(message.caption or ""), reply_markup=kb_cont)
         elif message.document:
-            await bot.senddocument(userid, message.document.fileid, caption=(message.caption or ""), replymarkup=kbcont)
+            await bot.send_document(user_id, message.document.file_id, caption=(message.caption or ""), reply_markup=kb_cont)
         elif message.video:
-            await bot.sendvideo(userid, message.video.fileid, caption=(message.caption or ""), replymarkup=kbcont)
+            await bot.send_video(user_id, message.video.file_id, caption=(message.caption or ""), reply_markup=kb_cont)
         else:
-            await bot.sendmessage(userid, "Получен ответ, но его формат неизвестен.", replymarkup=kbcont)
+            await bot.send_message(user_id, "Получен ответ, но его формат неизвестен.", reply_markup=kb_cont)
         await message.reply("Ответ отправлен пользователю!")
     except Exception as e:
         await message.reply("Ошибка отправки пользователю (возможно, он заблокировал бота).")
     await state.finish()
 
-# Пользователь нажал "Продолжить диалог"
-@dp.callbackqueryhandler(lambda c: c.data and c.data.startswith('continue'))
-async def processcontinueuser(callbackquery: types.CallbackQuery, state: FSMContext):
-    messageid = callbackquery.data.split('')[1]
-    await state.updatedata(dialogid=messageid)
-    await bot.sendmessage(callbackquery.fromuser.id, "Напиши следующий анонимный ответ админу.")
-    await UserReplyState.waitingforuser.set()
-    await callbackquery.answer()
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('continue_'))
+async def process_continue_user(callback_query: types.CallbackQuery, state: FSMContext):
+    message_id = callback_query.data.split('_')[1]
+    await state.update_data(dialog_id=message_id)
+    await bot.send_message(callback_query.from_user.id, "Напиши следующий анонимный ответ админу.")
+    await UserReplyState.waiting_for_user.set()
+    await callback_query.answer()
 
-# Пользователь отправляет свой ответ админу
-@dp.messagehandler(state=UserReplyState.waitingforuser, contenttypes=types.ContentType.ANY)
-async def processuserdialogreply(message: types.Message, state: FSMContext):
-    data = await state.getdata()
-    dialogid = data.get("dialogid")
-    mapping = loadmapping()
-    userid = message.fromuser.id
-    if mapping.get(str(dialogid)) != userid:
+@dp.message_handler(state=UserReplyState.waiting_for_user, content_types=types.ContentType.ANY)
+async def process_user_dialog_reply(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    dialog_id = data.get("dialog_id")
+    mapping = load_mapping()
+    user_id = message.from_user.id
+    if mapping.get(str(dialog_id)) != user_id:
         await message.reply("Ошибка идентификации диалога.")
         await state.finish()
         return
 
-    header = f'✉️ Продолжение анонимного диалога (№{dialogid}):'
+    header = f'✉️ Продолжение анонимного диалога (№{dialog_id}):'
     kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Ответить пользователю", callbackdata=f"reply{dialogid}")
+        InlineKeyboardButton("Ответить пользователю", callback_data=f"reply_{dialog_id}")
     )
 
     if message.text:
-        await bot.sendmessage(OWNERID, header + "\n\n" + message.text, replymarkup=kb)
+        await bot.send_message(OWNER_ID, header + "\n\n" + message.text, reply_markup=kb)
     elif message.photo:
-        await bot.sendphoto(OWNERID, message.photo-1.fileid, caption=header + (("\n" + message.caption) if message.caption else ""), replymarkup=kb)
-    elif
-
-
-message.document:
+        await bot.send_photo(OWNER_ID, message.photo[-1].file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
+    elif message.document:
         await bot.send_document(OWNER_ID, message.document.file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
     elif message.video:
-        await bot.send_video(OWNER_ID, message.video.file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
+await bot.send_video(OWNER_ID, message.video.file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
     else:
         await bot.send_message(OWNER_ID, header + " (Неизвестный формат сообщения).", reply_markup=kb)
 
