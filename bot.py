@@ -1,30 +1,13 @@
 import os
 import json
-from threading import Thread
-from flask import Flask
-
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-API_TOKEN = 'ВАШ_ТОКЕН'
-OWNER_ID = ВАШ_ID  # ЦЕЛОЕ ЧИСЛО
-
-# ==== Flask для Ping ====
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Бот работает!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
-flask_thread = Thread(target=run_flask)
-flask_thread.start()
-# ==== END Flask ====
+API_TOKEN = '7785178596:AAFLk9YvCxtZe-HrqK3c5S3QC8u2rPGh8jw'
+OWNER_ID = 58715694  # ЦЕЛОЕ ЧИСЛО
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
@@ -58,6 +41,7 @@ def get_next_id():
 
 class ReplyState(StatesGroup):
     waiting_for_admin = State()
+
 class UserReplyState(StatesGroup):
     waiting_for_user = State()
 
@@ -97,6 +81,7 @@ async def anonymous_message(message: types.Message, state: FSMContext):
     )
 
     await bot.send_message(OWNER_ID, notification)
+
     if message.text:
         await bot.send_message(OWNER_ID, f"{content_header}\n\n{message.text}", reply_markup=keyboard)
     elif message.photo:
@@ -107,7 +92,7 @@ async def anonymous_message(message: types.Message, state: FSMContext):
     elif message.video:
         await bot.send_video(OWNER_ID, message.video.file_id, caption=content_header + (("\n" + message.caption) if message.caption else ""), reply_markup=keyboard)
     else:
-await bot.send_message(OWNER_ID, f"{content_header} (неизвестный формат!)", reply_markup=keyboard)
+        await bot.send_message(OWNER_ID, f"{content_header} (неизвестный формат!)", reply_markup=keyboard)
 
     await message.reply("Ваше анонимное обращение отправлено!")
 
@@ -115,6 +100,7 @@ await bot.send_message(OWNER_ID, f"{content_header} (неизвестный фо
 async def process_callback_reply(callback_query: types.CallbackQuery, state: FSMContext):
     if int(callback_query.from_user.id) != int(OWNER_ID):
         return await callback_query.answer("Только админ может отвечать!", show_alert=True)
+
     message_id = callback_query.data.split('_')[1]
     await state.update_data(answer_to_id=message_id)
     await bot.send_message(OWNER_ID, f"Введите ответ для обращения №{message_id}:")
@@ -127,15 +113,20 @@ async def process_admin_answer(message: types.Message, state: FSMContext):
     message_id = data.get('answer_to_id')
     mapping = load_mapping()
     user_id = mapping.get(str(message_id))
+
     if not user_id:
-        await message.reply("Ошибка: пользователь не найден.")
+        await message.reply("❌ Ошибка: пользователь не найден.")
         await state.finish()
         return
+
     try:
+        user_id = int(user_id)
         kb_cont = InlineKeyboardMarkup().add(
             InlineKeyboardButton("Продолжить диалог", callback_data=f"continue_{message_id}")
         )
+
         await bot.send_message(user_id, "‼️ Получен ответ на вашу анонимку!")
+
         if message.text:
             await bot.send_message(user_id, message.text, reply_markup=kb_cont)
         elif message.photo:
@@ -145,11 +136,13 @@ async def process_admin_answer(message: types.Message, state: FSMContext):
         elif message.video:
             await bot.send_video(user_id, message.video.file_id, caption=(message.caption or ""), reply_markup=kb_cont)
         else:
-            await bot.send_message(user_id, "Получен ответ, но его формат неизвестен.", reply_markup=kb_cont)
-        await message.reply("Ответ отправлен пользователю!")
+            await bot.send_message(user_id, "📎 Получен ответ, но его формат не поддерживается.", reply_markup=kb_cont)
+
+        await message.reply("✅ Ответ отправлен пользователю!")
     except Exception as e:
-        await message.reply("Ошибка отправки пользователю (возможно, он заблокировал бота).")
-    await state.finish()
+        await message.reply(f"⚠️ Ошибка при отправке ответа пользователю: {e}")
+    finally:
+        await state.finish()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('continue_'))
 async def process_continue_user(callback_query: types.CallbackQuery, state: FSMContext):
@@ -165,6 +158,7 @@ async def process_user_dialog_reply(message: types.Message, state: FSMContext):
     dialog_id = data.get("dialog_id")
     mapping = load_mapping()
     user_id = message.from_user.id
+
     if mapping.get(str(dialog_id)) != user_id:
         await message.reply("Ошибка идентификации диалога.")
         await state.finish()
@@ -182,7 +176,7 @@ async def process_user_dialog_reply(message: types.Message, state: FSMContext):
     elif message.document:
         await bot.send_document(OWNER_ID, message.document.file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
     elif message.video:
-await bot.send_video(OWNER_ID, message.video.file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
+        await bot.send_video(OWNER_ID, message.video.file_id, caption=header + (("\n" + message.caption) if message.caption else ""), reply_markup=kb)
     else:
         await bot.send_message(OWNER_ID, header + " (Неизвестный формат сообщения).", reply_markup=kb)
 
