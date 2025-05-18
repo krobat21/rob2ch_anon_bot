@@ -97,9 +97,7 @@ async def anonymous_message(message: types.Message):
             message.sticker.file_id
         )
     elif message.voice:
-
-
-await bot.send_message(OWNER_ID, user_info, reply_markup=reply_kb)
+        await bot.send_message(OWNER_ID, user_info, reply_markup=reply_kb)
         await bot.send_voice(
             OWNER_ID,
             message.voice.file_id,
@@ -114,8 +112,7 @@ await bot.send_message(OWNER_ID, user_info, reply_markup=reply_kb)
         )
     else:
         await bot.send_message(OWNER_ID, f"{user_info}\n[Тип сообщения не поддерживается ботом для отправки]", reply_markup=reply_kb)
-
-    await message.reply("Ваше анонимное обращение отправлено!")
+        await message.reply("Ваше анонимное обращение отправлено!")
 
 # Обработка кнопки "Ответить"
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('reply_'))
